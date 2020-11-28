@@ -142,9 +142,7 @@ class PPOAlgoIntrinsic(BaseAlgo):
             key = list(old_parameters.keys())[index]
             old_weights = old_parameters[key]
             new_weights = new_parameters[key]
-#            print("Old Norm", numpy.linalg.norm(old_weights))
-#            print("New Norm", numpy.linalg.norm(new_weights))
-            print(key + " diff       \t", numpy.linalg.norm(old_weights - new_weights))
+            print(key + " diff       \t", numpy.linalg.norm(new_weights - old_weights))
 
         return logs
 
