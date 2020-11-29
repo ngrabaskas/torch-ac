@@ -2,8 +2,11 @@ import numpy
 import torch
 import torch.nn.functional as F
 
-from torch_ac.algos.base import BaseAlgo
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.preprocessing import normalize
 
+from torch_ac.algos.base import BaseAlgo
 class PPOAlgoIntrinsic(BaseAlgo):
     """The Proximal Policy Optimization algorithm
     ([Schulman et al., 2015](https://arxiv.org/abs/1707.06347))."""
@@ -138,12 +141,25 @@ class PPOAlgoIntrinsic(BaseAlgo):
             new_parameters[name] = param.detach().numpy().copy()
             
         print("")
+        fig, axs = plt.subplots(1,3)
+        fig.suptitle('Convolution Layer Weights Normalized Difference')
+        
         for index in range(len(old_parameters.keys())):
-            key = list(old_parameters.keys())[index]
-            old_weights = old_parameters[key]
-            new_weights = new_parameters[key]
-            print(key + " diff       \t", numpy.linalg.norm(new_weights - old_weights))
-
+            if index == 0 or index == 2 or index == 4:
+                key = list(old_parameters.keys())[index]
+                old_weights = old_parameters[key]
+                new_weights = new_parameters[key]
+                norm_diff = numpy.linalg.norm(new_weights - old_weights)
+                print(key + " diff       \t", norm_diff)
+                diff_matrix = abs(new_weights - old_weights)
+                diff_matrix[:,:,0,0] = normalize(diff_matrix[:,:,0,0], norm='max', axis=0)
+                axs[int(index / 2)].imshow(diff_matrix[:,:,0,0], cmap='Greens', interpolation='nearest')
+          
+        # This allows the plots to update as the model trains
+        plt.ion()
+        plt.show()
+        plt.pause(0.001)
+        
         return logs
 
     def _get_batches_starting_indexes(self):
