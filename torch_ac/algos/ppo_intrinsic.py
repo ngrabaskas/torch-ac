@@ -34,7 +34,6 @@ class PPOAlgoIntrinsic(BaseAlgo):
 
         for _ in range(self.epochs):
             # Initialize log values
-#            print(exps.reward)
 
             log_entropies = []
             log_values = []
@@ -99,7 +98,7 @@ class PPOAlgoIntrinsic(BaseAlgo):
 
                     if self.acmodel.recurrent and i < self.recurrence - 1:
                         exps.memory[inds + i + 1] = memory.detach()
-
+                
                 # Update batch values
 
                 batch_entropy /= self.recurrence
@@ -109,7 +108,7 @@ class PPOAlgoIntrinsic(BaseAlgo):
                 batch_loss /= self.recurrence
 
                 # Update actor-critic
-
+                
                 self.optimizer.zero_grad()
                 batch_loss.backward()
                 grad_norm = sum(p.grad.data.norm(2).item() ** 2 for p in self.acmodel.parameters()) ** 0.5
@@ -123,6 +122,18 @@ class PPOAlgoIntrinsic(BaseAlgo):
                 log_policy_losses.append(batch_policy_loss)
                 log_value_losses.append(batch_value_loss)
                 log_grad_norms.append(grad_norm)
+                
+        # Final update for intrinsic reward
+        print("Batch Loss Before", batch_loss)
+        new_parameters = {}
+        for name, param in self.acmodel.named_parameters():
+            new_parameters[name] = param.detach().numpy().copy()
+        norm_diff  = 0.0
+        for index in range(len(old_parameters.keys())):
+            if index == 0 or index == 2 or index == 4:
+                key = list(old_parameters.keys())[index]
+                norm_diff += numpy.linalg.norm(new_parameters[key] - old_parameters[key])
+        print("Norm Diff Mean", norm_diff)
 
         # Log some values
 
@@ -133,33 +144,7 @@ class PPOAlgoIntrinsic(BaseAlgo):
             "value_loss": numpy.mean(log_value_losses),
             "grad_norm": numpy.mean(log_grad_norms)
         }
-        
-        # Update Intrinsic Rewards
-        # dict_keys(['image_conv.0.weight', 'image_conv.0.bias', 'image_conv.3.weight', 'image_conv.3.bias', 'image_conv.5.weight', 'image_conv.5.bias', 'actor.0.weight', 'actor.0.bias', 'actor.2.weight', 'actor.2.bias', 'critic.0.weight', 'critic.0.bias', 'critic.2.weight', 'critic.2.bias'])
-        new_parameters = {}
-        for name, param in self.acmodel.named_parameters():
-            new_parameters[name] = param.detach().numpy().copy()
-            
-        print("")
-        fig, axs = plt.subplots(1,3)
-        fig.suptitle('Convolution Layer Weights Normalized Difference')
-        
-        for index in range(len(old_parameters.keys())):
-            if index == 0 or index == 2 or index == 4:
-                key = list(old_parameters.keys())[index]
-                old_weights = old_parameters[key]
-                new_weights = new_parameters[key]
-                norm_diff = numpy.linalg.norm(new_weights - old_weights)
-                print(key + " diff       \t", norm_diff)
-                diff_matrix = abs(new_weights - old_weights)
-                diff_matrix[:,:,0,0] = normalize(diff_matrix[:,:,0,0], norm='max', axis=0)
-                axs[int(index / 2)].imshow(diff_matrix[:,:,0,0], cmap='Greens', interpolation='nearest')
-          
-        # This allows the plots to update as the model trains
-        plt.ion()
-        plt.show()
-        plt.pause(0.001)
-        
+
         return logs
 
     def _get_batches_starting_indexes(self):
