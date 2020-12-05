@@ -2,8 +2,6 @@ import numpy
 import torch
 import torch.nn.functional as F
 
-import matplotlib.pyplot as plt
-import numpy as np
 from sklearn.preprocessing import normalize
 
 from torch_ac.algos.base import BaseAlgo
@@ -31,8 +29,13 @@ class PPOAlgoIntrinsic(BaseAlgo):
 
     def update_parameters(self, exps):
         # Collect experiences
+        
+        # Intrinsic Reward
+        old_parameters = {}
+        for name, param in self.acmodel.named_parameters():
+            old_parameters[name] = param.detach().numpy().copy()
 
-        for _ in range(self.epochs):
+        for epoch in range(self.epochs):
             # Initialize log values
 
             log_entropies = []
@@ -40,11 +43,6 @@ class PPOAlgoIntrinsic(BaseAlgo):
             log_policy_losses = []
             log_value_losses = []
             log_grad_norms = []
-            
-            # Intrinsic Reward
-            old_parameters = {}
-            for name, param in self.acmodel.named_parameters():
-                old_parameters[name] = param.detach().numpy().copy()
 
             for inds in self._get_batches_starting_indexes():
                 # Initialize batch values
@@ -107,34 +105,57 @@ class PPOAlgoIntrinsic(BaseAlgo):
                 batch_value_loss /= self.recurrence
                 batch_loss /= self.recurrence
 
-                # Update actor-critic
-                
-                self.optimizer.zero_grad()
-                batch_loss.backward()
-                grad_norm = sum(p.grad.data.norm(2).item() ** 2 for p in self.acmodel.parameters()) ** 0.5
-                torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)
-                self.optimizer.step()
+                # Don't update on the last epoch, this will add the state difference to the loss and update
+                if epoch != self.epochs - 1:
+    
+                    # Update actor-critic
+                    
+                    self.optimizer.zero_grad()
+                    batch_loss.backward()
+                    grad_norm = sum(p.grad.data.norm(2).item() ** 2 for p in self.acmodel.parameters()) ** 0.5
+                    torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)
+                    self.optimizer.step()
 
-                # Update log values
+                    # Update log values
 
-                log_entropies.append(batch_entropy)
-                log_values.append(batch_value)
-                log_policy_losses.append(batch_policy_loss)
-                log_value_losses.append(batch_value_loss)
-                log_grad_norms.append(grad_norm)
+                    log_entropies.append(batch_entropy)
+                    log_values.append(batch_value)
+                    log_policy_losses.append(batch_policy_loss)
+                    log_value_losses.append(batch_value_loss)
+                    log_grad_norms.append(grad_norm)
                 
         # Final update for intrinsic reward
-        print("Batch Loss Before", batch_loss)
+        
+#        print("Batch Loss Before", batch_loss)
         new_parameters = {}
         for name, param in self.acmodel.named_parameters():
             new_parameters[name] = param.detach().numpy().copy()
-        norm_diff  = 0.0
+        norm_diff  = []
         for index in range(len(old_parameters.keys())):
             if index == 0 or index == 2 or index == 4:
                 key = list(old_parameters.keys())[index]
-                norm_diff += numpy.linalg.norm(new_parameters[key] - old_parameters[key])
-        print("Norm Diff Mean", norm_diff)
+                norm_diff.append(numpy.linalg.norm(new_parameters[key] - old_parameters[key]))
+        
+        batch_loss += (numpy.mean(norm_diff))
+        
+        # Update actor-critic
 
+        self.optimizer.zero_grad()
+        batch_loss.backward()
+        grad_norm = sum(p.grad.data.norm(2).item() ** 2 for p in self.acmodel.parameters()) ** 0.5
+        torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)
+        self.optimizer.step()
+        
+        # Update log values
+
+        log_entropies.append(batch_entropy)
+        log_values.append(batch_value)
+        log_policy_losses.append(batch_policy_loss)
+        log_value_losses.append(batch_value_loss)
+        log_grad_norms.append(grad_norm)
+        
+#        print("Norm Diff Mean", norm_diff)
+#        print("Batch Loss After", batch_loss)
         # Log some values
 
         logs = {
