@@ -51,3 +51,9 @@ class ParallelEnv(gym.Env):
 
     def render(self):
         raise NotImplementedError
+
+    # return the current grid state
+    def get_environment_state(self):
+        return self.envs[0]
+        #raise NotImplementedError
+    
